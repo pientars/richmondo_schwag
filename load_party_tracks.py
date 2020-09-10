@@ -1,7 +1,9 @@
+from collections import OrderedDict
 import csv
 import os
 import pandas as pd
 import pickle
+import re
 import spotipy
 import time
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
@@ -12,6 +14,11 @@ SLEEP_BETWEEN_TRACKS = 2
 def add_tracks_to_playlist(track_ids_list, playlist_id, spu):
     results = spu.playlist_add_items(playlist_id, track_ids_list, position=None)
     print(results)
+
+
+def chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 
 def create_playlist(user_id, pl_name, desc, sp):
@@ -27,15 +34,20 @@ def get_artist_track_ids(party_df, sp):
         track_ids_list = [val for val in cached_artist_ids.values()]
         print('Restarted with ids: {}'.format(track_ids_list))
     else:
-        cached_artist_ids = {}
+        cached_artist_ids = OrderedDict()
         track_ids_list = []
     i = 0
     for index, row in party_df.iterrows():
+        artist = row['Artist']
+        track = row['Track']
+        # Drop the (ft on songs, it messes up spotify search)
+        track = re.sub(r'\(.+\)', '', track).strip()
+        if artist + track in cached_artist_ids:
+            i += 1
+            continue
         print('Track {:d}: {:.2f}%'.format(i, 100.0 * i / len(party_df)))
         i += 1
         time.sleep(SLEEP_BETWEEN_TRACKS)
-        artist = row['Artist']
-        track = row['Track']
         # Get a track
         track_result = search_for_track(artist, track, sp)
         if track_result == -1:
@@ -110,6 +122,9 @@ if __name__ == '__main__':
                                'The Richmond Anthology of Music, but just the party tracks! All thanks goes to the RAM!',
                                sp_user)
     pl_id = playlist['id']
-    add_tracks_to_playlist(track_ids_list, pl_id, sp_user)
+    chunkies = chunks(track_ids_list, 100)
+    for chunk in chunkies:
+        time.sleep(SLEEP_BETWEEN_TRACKS)
+        add_tracks_to_playlist(chunk, pl_id, sp_user)
 
 
